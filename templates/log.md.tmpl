@@ -1,0 +1,16 @@
+---
+type: log
+schema_version: {{schema_version}}
+created: {{date}}
+---
+
+# {{project_name}} — Wiki Log
+
+> Append-only. Every compile/ingest/lint/heal event gets one entry.
+> Format: `## [YYYY-MM-DD] <op> | <summary>`
+
+## [{{date}}] init | scaffolded by context-compounder
+
+- created context/{raw/, wiki/, schema.md}
+- created wiki/{index.md, log.md, README.md, concepts/, entities/, summaries/}
+- schema version: {{schema_version}}

@@ -1,0 +1,37 @@
+# wiki/ — Compiled Knowledge Base
+
+This directory is **LLM-owned**. It is produced by the `context-compounder` skill
+from the sources in `../raw/`.
+
+## Quick tour for humans
+
+- **`index.md`** — start here. It lists every page with a one-line summary.
+- **`log.md`** — chronological record of every compile/ingest/lint pass.
+- **`concepts/`** — encyclopedia-style articles on cross-cutting ideas.
+- **`entities/`** — one page per person, tool, service, or system.
+- **`summaries/`** — per-source summaries of documents in `raw/`.
+
+## How the wiki stays current
+
+1. You drop new materials into `../raw/` (or add `.ref` files pointing to
+   existing repo docs like `docs/adr/`).
+2. You run `/context-compounder` in Claude Code.
+3. Claude detects changed sources via checksum diff, re-reads the affected
+   raw files, and updates the wiki pages they touch.
+4. `scripts/lint.py` validates the result (backlinks, orphans, staleness).
+
+## Editing pages manually
+
+You can hand-edit any page in this wiki. The next compile will **preserve** your
+edits and reconcile them into future passes rather than clobbering.
+
+If you change `../schema.md`, bump its `schema_version` so the linter flags
+pages that need recompiling.
+
+## Conventions in one line
+
+- Backlinks: `[[slug]]` or `[[slug|display]]`
+- Slugs: `kebab-case-ascii`
+- Every page has flat-YAML frontmatter with `type` and `schema_version`
+
+Full conventions in `../schema.md`.

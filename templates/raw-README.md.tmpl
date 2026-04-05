@@ -1,0 +1,41 @@
+# raw/ — Source Materials
+
+Drop raw source documents here. This directory is **immutable** from the LLM's
+perspective: it reads, it never writes.
+
+## What to drop in
+
+- Research papers (`.md`, `.pdf`, `.txt`)
+- Meeting notes, Slack exports, design docs
+- External articles (convert to `.md` where possible)
+- ADRs, RFCs, spec documents
+- Dataset descriptions, README excerpts from external repos
+
+## `.ref` files (recommended for in-repo docs)
+
+Rather than copying existing project docs into `raw/` (which creates drift),
+create a `.ref` file pointing to the real location.
+
+A `.ref` file is a single line containing a relative path from the repo root:
+
+```
+# raw/adr-0001-auth.md.ref
+docs/adr/0001-authentication.md
+```
+
+When the skill compiles, it reads the target file directly. If the target
+moves or is deleted, the linter flags it as a broken ref.
+
+**Security:** `.ref` paths MUST stay inside the repo root. Absolute paths and
+`..` segments are rejected.
+
+## File size
+
+Files larger than 5 MB are skipped with a warning. For large PDFs, extract
+the relevant sections into a summary `.md` file instead.
+
+## Should `raw/` be committed to git?
+
+Yes, usually. Committing `raw/` makes the wiki reproducible by the whole team.
+Large binaries (PDFs) may bloat the repo, so uncomment entries in a
+`raw/.gitignore` if you prefer to keep them local.

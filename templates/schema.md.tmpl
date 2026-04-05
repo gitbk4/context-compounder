@@ -1,0 +1,121 @@
+# Wiki Schema — {{project_name}}
+
+> The schema is human + LLM co-evolved. Edit this file to change conventions.
+> Bump `schema_version` when making breaking changes.
+
+schema_version: {{schema_version}}
+created: {{date}}
+
+---
+
+## Wiki Structure
+
+```
+context/
+├── schema.md          (this file)
+├── raw/               (immutable sources — LLM reads, never writes)
+└── wiki/              (LLM-owned compiled artifact)
+    ├── index.md       (catalog — authoritative)
+    ├── log.md         (append-only chronological record)
+    ├── concepts/      (encyclopedia-style articles on ideas/topics)
+    ├── entities/      (people, projects, services, systems, tools)
+    └── summaries/     (per-source summaries of raw/ documents)
+```
+
+## Page Types
+
+Every wiki page has a `type` field in its frontmatter. Valid types:
+
+| Type | Folder | Purpose |
+|---|---|---|
+| `concept` | `concepts/` | Cross-cutting idea or topic. Synthesizes multiple sources. |
+| `entity` | `entities/` | A specific thing (person, tool, repo, service, system). |
+| `summary` | `summaries/` | Summary of one raw/ source. |
+| `index` | `wiki/` | The catalog (index.md). |
+| `log` | `wiki/` | The change log (log.md). |
+
+## Frontmatter
+
+Every page MUST have flat-YAML frontmatter between `---` delimiters. Required fields:
+
+- `type`: one of `concept`, `entity`, `summary`, `index`, `log`
+- `schema_version`: integer matching this file's version
+
+Optional fields:
+
+- `created`: ISO date (YYYY-MM-DD)
+- `updated`: ISO date
+- `sources`: flat list of raw/ filenames this page derives from
+- `related_paths`: flat list of code paths this page documents (enables staleness lint)
+- `aliases`: flat list of alternative names (for entities)
+
+**Flat YAML only.** No nested maps or nested lists. Lists use inline form: `[a, b, c]`.
+
+### Example
+
+```markdown
+---
+type: concept
+schema_version: 1
+created: 2026-04-04
+updated: 2026-04-04
+sources: [karpathy-post-2026-04-03.md, dair-ai-blog.md]
+related_paths: [src/auth/, src/sessions/]
+---
+
+# Authentication Flow
+
+Content goes here, with [[backlinks]] to other pages.
+```
+
+## Slug Naming
+
+- Kebab-case ASCII: `a-z`, `0-9`, `-`
+- Lowercase only
+- No spaces, no underscores, no unicode
+- Examples: `retrieval-augmented-generation`, `plaid-transfer-api`, `karpathy`
+
+## Backlinks
+
+Inline wiki-links: `[[slug]]` or `[[slug|display text]]`.
+
+- Every `[[slug]]` MUST resolve to an existing page
+- Backlinks inside code fences are ignored by the linter
+- Self-references (page linking to itself) produce a warning
+
+## Entity Singletons
+
+Each entity has ONE canonical page identified by its slug. If two raw/ sources
+mention "Stripe", both link to `entities/stripe.md`. The linter flags duplicates.
+
+## Index is Authoritative
+
+`index.md` is the catalog. Every page MUST appear in the index, and every index
+entry MUST correspond to an existing page. The linter enforces both directions.
+
+## Log Format
+
+Append-only. Every compile, ingest, and lint run adds one entry:
+
+```
+## [YYYY-MM-DD] <op> | <summary>
+- touched: page-a, page-b
+- notes: ...
+```
+
+Ops: `init`, `ingest`, `compile`, `lint`, `heal`.
+
+## Ownership
+
+- `raw/` — human-owned, immutable. LLM reads, never writes.
+- `wiki/` — LLM-owned. Humans MAY edit; the LLM will reconcile human edits on the
+  next compile rather than silently clobbering.
+- `schema.md` — co-evolved. Either party edits; bump `schema_version` on breaking
+  changes so the linter flags pages needing recompilation.
+
+## Policies
+
+- **Single session**: don't run two compiles concurrently (state file can clobber).
+- **Token budgets**: `quick` mode ~20k input / 10k output. `deep` mode ~80k / 40k.
+- **File size cap**: raw/ files over 5 MB are skipped with a warning.
+- **Staleness threshold**: pages warned when 10+ commits touch `related_paths` since page mtime.
