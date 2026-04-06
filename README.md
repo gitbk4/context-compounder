@@ -23,10 +23,18 @@ Works with **Claude Code** and **Google Antigravity** (same SKILL.md, same scrip
 Based on [Andrej Karpathy's llm-wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 (April 2026).
 
+## Skills included
+
+| Skill | Command | Purpose |
+|---|---|---|
+| **compathy** | `/compathy` | Build/update the compiled wiki for the current project |
+| **compathy-compare** | `/compathy-compare <path>` | Compare two projects' architectures + compatibility |
+| **compathy-augment** | `/compathy-augment <path>` | Learn from another project's strengths and adopt them |
+
 ## Install
 
-Clone once, then use the installer to symlink into whichever agentic IDE
-you use. One target per invocation — pick `--claude` or `--antigravity`.
+Clone once, then use the installer. By default it installs **all three
+skills**. Pick `--claude` or `--antigravity` for your IDE.
 
 ```bash
 git clone https://github.com/gitbk4/compathy.git ~/Code/compathy
@@ -36,17 +44,16 @@ cd ~/Code/compathy
 ### Claude Code
 
 ```bash
-python3 scripts/install.py --claude              # global (~/.claude/skills/compathy)
-python3 scripts/install.py --claude --workspace  # current project (.claude/skills/compathy)
+python3 scripts/install.py --claude              # all skills, global
+python3 scripts/install.py --claude --workspace  # all skills, project-local
+python3 scripts/install.py --claude --skill main # just the core skill
 ```
-
-Invoke with `/compathy`.
 
 ### Google Antigravity
 
 ```bash
-python3 scripts/install.py --antigravity              # global (~/.gemini/antigravity/skills/compathy)
-python3 scripts/install.py --antigravity --workspace  # current project (.agent/skills/compathy)
+python3 scripts/install.py --antigravity              # all skills, global
+python3 scripts/install.py --antigravity --workspace  # all skills, project-local
 ```
 
 Compathy installs into Antigravity's **Skills** slot (not Rules, not Workflows).
@@ -57,8 +64,8 @@ only when relevant, keeping your agent context clean.
 
 ```bash
 cd ~/Code/compathy && git pull          # update (symlink means all tools see it)
-python3 scripts/install.py --claude --uninstall
-python3 scripts/install.py --antigravity --uninstall
+python3 scripts/install.py --claude --uninstall           # remove all skills
+python3 scripts/install.py --claude --uninstall --skill compare  # remove one
 ```
 
 ### Windows users
@@ -91,7 +98,9 @@ context/
 ├── schema.md                   # conventions (human+LLM co-evolved)
 ├── raw/                        # you drop sources here; LLM never writes
 │   ├── README.md
+│   ├── augmented/              # adopted material from compathy-augment
 │   └── <your sources + .ref files>
+├── compathy-reports/           # gitignored: compare + augment reports
 └── wiki/                       # LLM-owned, git-versioned, compounding
     ├── README.md
     ├── index.md                # authoritative catalog
@@ -99,6 +108,7 @@ context/
     ├── .compile-state.json     # checksums (for change detection)
     ├── concepts/               # cross-cutting articles
     ├── entities/               # people, tools, services, systems
+    ├── patterns/               # technical conventions and coding patterns
     └── summaries/              # per-source summaries
 ```
 
@@ -127,6 +137,69 @@ no absolute paths).
   frontmatter. Lint counts commits to those paths since the page's last
   update. If 10+ commits have touched the tracked paths, the page is flagged
   as stale and the skill offers to heal it.
+
+## compathy-compare
+
+Compare two projects and produce a compatibility report.
+
+```
+/compathy-compare ../other-project
+```
+
+The current project (must have a compathy wiki) is implicitly "Project A".
+The target project can fall back to a bootstrap scan if it doesn't have a wiki
+(less precise but always works).
+
+The report includes:
+- **Compatibility assessment** with an engineering-hours estimate
+- **Redundancy list** — overlapping entities, concepts, patterns
+- **Architecture diagram** for each project (ASCII)
+- **Venn overlap diagram** (shared vs unique)
+- **Proposed combined architecture** (how a merge would look)
+
+Reports are written to `context/compathy-reports/` and gitignored by default
+(they're internal analysis, not shipped artifacts).
+
+### Engineering hours methodology
+
+The compatibility assessment produces a rough estimate of the total
+engineering hours required for full integration. Hours are computed by
+category:
+
+| Category | Per item | What it counts |
+|---|---|---|
+| Conflicting patterns | 4h | Conventions that directly contradict (e.g. different naming, different auth approach) |
+| Redundant entities | 2h | Entities doing the same job that must be merged or deduplicated |
+| Missing integrations | 8h | Features/services in one project that the other lacks |
+| Tech stack gaps | 16h | Fundamental tech differences (different language, different DB, different framework) |
+| Schema/data model alignment | 6h | Overlapping data models that need migration or adapter logic |
+
+The estimate is an order-of-magnitude guide, not a project plan. It helps
+answer "is this a weekend project or a quarter?" before diving in.
+
+## compathy-augment
+
+Learn from another project's strengths and selectively adopt them.
+
+```
+/compathy-augment ../admired-project
+```
+
+Flow:
+1. **Ask your intent** — what quality are you trying to improve?
+2. **Choose entry** — you tell compathy what you like, OR compathy analyzes
+   the target and shows you its strengths
+3. **Pick what to adopt** — select from the strength list
+4. **Adopt with provenance** — selected items are written to
+   `context/raw/augmented/<target-name>/` as raw sources with full attribution
+5. **Compile** — your next `/compathy` run integrates adopted material into
+   your wiki with backlinks and index entries
+
+The target project is **always read-only**. Compathy-augment never writes to it.
+
+Adopted material lives in `raw/augmented/` with frontmatter citing
+`source_project`, `source_paths`, and `adopted_reason` — so provenance
+is never lost across compiles.
 
 ## Design philosophy
 
