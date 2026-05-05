@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # pylint: disable=wrong-import-position
+import persona_integration  # noqa: E402
 from paths import (  # noqa: E402
     INDEX_FILE,
     LOG_FILE,
@@ -90,6 +91,43 @@ def create_structure(target: Path, project_name: str = "") -> None:
     )
     (raw_dir(target) / "README.md").write_text(
         render_template("raw-README.md", tpl_vars), encoding="utf-8"
+    )
+
+    _maybe_integrate_persona(target, tpl_vars["project_name"])
+
+
+def _maybe_integrate_persona(target: Path, project_name: str) -> None:
+    """Opt-in persona integration: read ai-quickstart's persona.json (if any)
+    and seed entities/builder.md + patterns/style.md.
+
+    Strict invariant: when persona is None, this is a no-op — the scaffold
+    output is byte-identical to a run without ai-quickstart installed.
+    """
+    persona = persona_integration.load_persona_if_available()
+    if persona is None:
+        return
+
+    wiki_root = wiki_dir(target)
+    builder_path = wiki_root / "entities" / "builder.md"
+    style_path = wiki_root / "patterns" / "style.md"
+
+    builder_md = persona_integration.render_builder_md(persona, project_name)
+    builder_path.write_text(builder_md, encoding="utf-8")
+
+    style_md = persona_integration.render_style_md(persona)
+    style_written = bool(style_md.strip())
+    if style_written:
+        style_path.write_text(style_md, encoding="utf-8")
+
+    persona_integration.update_index_with_persona_pages(
+        wiki_root / INDEX_FILE,
+        builder=True,
+        style=style_written,
+    )
+    persona_integration.append_persona_log_entry(
+        wiki_root / LOG_FILE,
+        builder=True,
+        style=style_written,
     )
 
 
