@@ -3,14 +3,29 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import augment  # noqa: E402
+import persona_integration  # noqa: E402
 import scaffold  # noqa: E402
 from paths import raw_dir, wiki_dir  # noqa: E402
+
+
+@contextmanager
+def _no_persona():
+    """Point persona_integration at a path that cannot exist so scaffold
+    runs in its no-persona branch and tests aren't polluted by the real
+    user's ~/.ai-quickstart/persona/persona.json."""
+    old = persona_integration.PERSONA_JSON_PATH
+    persona_integration.PERSONA_JSON_PATH = Path("/nonexistent-augment-test/persona.json")
+    try:
+        yield
+    finally:
+        persona_integration.PERSONA_JSON_PATH = old
 
 
 def _git_init(root):
@@ -43,7 +58,10 @@ def _make_project(root, name, entities=None, concepts=None, with_wiki=True,
     subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=str(root),
                    check=True, capture_output=True)
     if with_wiki:
-        scaffold.create_structure(root, project_name=name)
+        # _no_persona ensures scaffold doesn't pull in the real user's persona
+        # and write builder.md / style.md, which would change page counts.
+        with _no_persona():
+            scaffold.create_structure(root, project_name=name)
         w = wiki_dir(root)
         for slug in (entities or []):
             (w / "entities" / f"{slug}.md").write_text(_page("entity", slug))

@@ -163,11 +163,12 @@ class TestRenderStyleMd(unittest.TestCase):
         self.assertIn("type: patterns", md)
         self.assertIn("provenance: from-persona", md)
         self.assertIn("# Style preferences", md)
-        # Both score-5 and score-4 paragraphs included
+        # Score 5/4/3 paragraphs all included (threshold lowered to 3 in the
+        # 2026-05-06 dogfood follow-up; see HIGH_TRUST_THRESHOLD comment).
         self.assertIn("> Prefers stdlib-only Python", md)
         self.assertIn("> Writes tests before shipping", md)
-        # Score-3 and score-2 paragraphs excluded
-        self.assertNotIn("shorter functions", md)
+        self.assertIn("shorter functions", md)
+        # Score-2 still excluded.
         self.assertNotIn("monorepo layouts", md)
         # Footer note present
         self.assertIn("Edit freely", md)
@@ -177,7 +178,7 @@ class TestRenderStyleMd(unittest.TestCase):
             "schema_version": 1,
             "paragraphs": [
                 {"id": "p:001", "text": "low trust", "trust_score": 2},
-                {"id": "p:002", "text": "also low", "trust_score": 3},
+                {"id": "p:002", "text": "also low", "trust_score": 1},
             ],
         }
         self.assertEqual(persona_integration.render_style_md(persona), "")

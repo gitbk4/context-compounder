@@ -24,7 +24,14 @@ from pathlib import Path
 from typing import Optional
 
 PERSONA_JSON_PATH = Path.home() / ".ai-quickstart" / "persona" / "persona.json"
-HIGH_TRUST_THRESHOLD = 4  # paragraphs with score < 4 are excluded from style seeding
+HIGH_TRUST_THRESHOLD = 3  # paragraphs with score < 3 are excluded from style seeding
+# Originally 4 per the v2-cathedral.md spec, lowered to 3 in 2026-05-06 dogfood
+# follow-up: fresh-user paragraphs (heal-rewrites without anecdotes yet) score
+# 3, so a 4-threshold meant style.md never seeded for new users. 3 captures
+# "heal rewrote a user-typed paragraph once" — enough signal for fresh users —
+# while still excluding (2) activity-inferred and (1) multi-hop content.
+# See TODO-ENG-005 for raising back to 4 once anecdote-anchored paragraphs
+# are common.
 EXPECTED_SCHEMA_VERSION = 1
 MAX_BUILDER_EXCERPTS = 3
 UNSPECIFIED = "unspecified"

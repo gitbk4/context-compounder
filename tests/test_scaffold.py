@@ -192,9 +192,10 @@ class TestPersonaIntegrationInScaffold(unittest.TestCase):
             self.assertNotIn("wiki/patterns/style.md", snap_no_persona)
 
     def test_scaffold_with_persona_but_no_high_trust_paragraphs(self):
-        """With persona present but no paragraphs >= score 4, builder.md is
-        still written (structured fields stand alone) but style.md is NOT
-        written — we never write empty files.
+        """With persona present but no paragraphs >= HIGH_TRUST_THRESHOLD,
+        builder.md is still written (structured fields stand alone) but
+        style.md is NOT written — we never write empty files. (Threshold
+        is 3 as of 2026-05-06; see HIGH_TRUST_THRESHOLD docstring.)
         """
         with tempfile.TemporaryDirectory() as td, \
              tempfile.TemporaryDirectory() as home:
@@ -202,8 +203,8 @@ class TestPersonaIntegrationInScaffold(unittest.TestCase):
                 _write_persona(
                     persona_path,
                     paragraphs=[
-                        {"id": "p:001", "text": "only score 3", "trust_score": 3},
-                        {"id": "p:002", "text": "only score 2", "trust_score": 2},
+                        {"id": "p:001", "text": "only score 2", "trust_score": 2},
+                        {"id": "p:002", "text": "only score 1", "trust_score": 1},
                     ],
                 )
                 target = Path(td)
