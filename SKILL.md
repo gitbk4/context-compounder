@@ -1,10 +1,6 @@
 ---
 name: compathy
 description: Jumpstart a Karpathy-style compiled knowledge base in any project. Reads raw sources, writes a structured markdown wiki with backlinks, index, log, and technical patterns. The wiki becomes compact, persistent context for all future agent sessions.
-metadata:
-  dependencies: []
-  engine: memento-skills
-  engine_repo: https://github.com/Memento-Teams/Memento-Skills
 ---
 
 # compathy
@@ -16,11 +12,6 @@ update) a compiled markdown wiki at `context/` in the current project.
 sources and WRITE a structured wiki with summaries, cross-linked concept pages,
 and an index. The wiki is a compounding, git-versioned, human-readable artifact.
 Future sessions skim the index and jump to relevant pages — no re-grounding.
-
-**Engine**: compathy is a [Memento-Skills](https://github.com/Memento-Teams/Memento-Skills)
-compatible playbook. Every context improvement runs through Memento-Skills'
-read → execute → reflect → write loop. If `memento` is installed, the skill
-can also be invoked directly via `memento agent`.
 
 ---
 
@@ -38,24 +29,7 @@ This runs `git pull --ff-only` in the compathy repo. If it succeeds, it
 prints the version change. If it fails (network, dirty tree, copy-install),
 it warns and continues — never blocks the skill.
 
-### Phase 0b — Sync Memento-Skills
-
-Memento-Skills is the engine for this wiki's maintenance. Check for updates:
-
-```bash
-python3 {skill_dir}/scripts/memento_sync.py
-```
-
-This checks GitHub for the latest Memento-Skills release and compares it to the
-locally installed version. It writes any new version to `{skill_dir}/MEMENTO_VERSION`.
-
-- If an **update is available**, the script prints install instructions to stderr.
-  Upgrade with: `pip install -e git+https://github.com/Memento-Teams/Memento-Skills.git`
-- If **not installed**, surface the install note to the user but continue — the skill
-  works without Memento-Skills installed; it just won't use the reflection loop.
-- If the check **fails** (network offline), continue silently.
-
-### Phase 0c — Detect Mode
+### Phase 0b — Detect Mode
 
 Then detect mode:
 
@@ -309,16 +283,66 @@ python3 {skill_dir}/scripts/lint.py --target . --format json
 Fix errors. Show the user a summary of changes and any warnings (including
 staleness warnings — these mean code has drifted from docs).
 
-### 2e. Staleness healing (CP3)
+---
 
-If lint reports `stale-page` warnings, offer to the user: "N pages look stale
-vs. recent code activity. Want me to re-read the related code paths and
-refresh them?" If yes, for each stale page:
+## Phase 3 — Reflect
 
-1. Read files/dirs from `related_paths`
-2. Update the page content to reflect current reality
-3. Bump `updated:` in frontmatter
-4. Append a log entry: `## [date] heal | refreshed page-slug`
+This phase runs after every INIT or RECOMPILE, unconditionally.
+
+### 3a. Identify drift candidates
+
+For every wiki page that has `related_paths` in its frontmatter, check whether
+any of those paths have changed since the page's `updated:` date:
+
+```bash
+git log --since="<updated-date>" --name-only --pretty=format: -- <related_path> | sort -u
+```
+
+Collect all pages where at least one tracked path has commits newer than
+`updated:`. These are drift candidates.
+
+### 3b. Re-read and evaluate
+
+For each drift candidate:
+
+1. Read the current files/dirs in `related_paths`.
+2. Compare against the page's existing content — does the page still accurately
+   describe what the code does? Look for: renamed symbols, new patterns, removed
+   abstractions, changed dependencies.
+3. Classify the delta as **minor** (small clarification needed) or **major**
+   (the page is meaningfully wrong or incomplete).
+
+Skip pages where the code change is cosmetic (whitespace, comments, test-only
+changes unrelated to the described concept).
+
+### 3c. Rewrite stale pages
+
+For each page that needs updating:
+
+1. Edit the page content to reflect current reality.
+2. Bump `updated:` in frontmatter to today's date.
+3. Append a log entry:
+
+```markdown
+## [YYYY-MM-DD] reflect | refreshed <page-slug>
+
+- triggered by: changes to <related_paths> since <old-updated-date>
+- delta: <one sentence on what changed>
+```
+
+### 3d. Report
+
+After reflect, print a one-line summary:
+
+```
+reflect: <N> pages checked, <M> refreshed, <K> skipped (no drift)
+```
+
+If N is 0 (no pages have `related_paths`), print:
+
+```
+reflect: no tracked paths — add related_paths to wiki pages to enable drift detection
+```
 
 ---
 
@@ -342,17 +366,17 @@ refresh them?" If yes, for each stale page:
 Print a compact summary:
 
 ```
-compathy v<version>  [memento-skills <memento_version>]
+compathy v<version>
   mode:      <INIT|RECOMPILE>
   pages:     <N> (concepts: X, entities: Y, summaries: Z, patterns: P)
   backlinks: <M>
   lint:      <E> errors, <W> warnings
+  reflect:   <M> pages refreshed
   next:      run `/compathy` again whenever you add to raw/
 ```
 
-Get versions by running:
+Get the version by running:
 
 ```bash
-python3 {skill_dir}/scripts/version.py           # compathy version
-cat {skill_dir}/MEMENTO_VERSION                  # last-known memento-skills version
+python3 {skill_dir}/scripts/version.py
 ```
