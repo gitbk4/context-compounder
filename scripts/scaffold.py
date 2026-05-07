@@ -130,6 +130,9 @@ def _append_discovery_log_entry(log_path: Path, result: dict) -> None:
         status = result.get(key, "skipped")
         if status != "skipped":
             parts.append(f"{fname} {status}")
+    mcp_status = result.get("mcp_json", "skipped")
+    if mcp_status not in ("skipped", "skipped-malformed", "error"):
+        parts.append(f".mcp.json {mcp_status}")
     if not parts:
         return
     text = log_path.read_text(encoding="utf-8")

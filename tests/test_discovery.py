@@ -1,4 +1,5 @@
-"""Tests for discovery.py — sentinel-fenced upsert into CLAUDE.md / README.md."""
+"""Tests for discovery.py: sentinel-fenced markdown upsert + .mcp.json upsert."""
+import json
 import sys
 import tempfile
 import unittest
@@ -131,7 +132,14 @@ class TestWriteDiscoveryBreadcrumbs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             target = Path(td)
             result = discovery.write_discovery_breadcrumbs(target, "demo")
-            self.assertEqual(result, {"claude_md": "created", "readme_md": "created"})
+            self.assertEqual(
+                result,
+                {
+                    "claude_md": "created",
+                    "readme_md": "created",
+                    "mcp_json": "created",
+                },
+            )
             self.assertTrue((target / "CLAUDE.md").is_file())
             self.assertTrue((target / "README.md").is_file())
             # Both contain the sentinel pair.
@@ -201,9 +209,115 @@ class TestWriteDiscoveryBreadcrumbs(unittest.TestCase):
             # README.md exists without sentinels; CLAUDE.md does not exist.
             (target / "README.md").write_text("# Existing readme\n", encoding="utf-8")
             result = discovery.write_discovery_breadcrumbs(target, "demo")
-            self.assertEqual(set(result.keys()), {"claude_md", "readme_md"})
+            self.assertEqual(
+                set(result.keys()), {"claude_md", "readme_md", "mcp_json"}
+            )
             self.assertEqual(result["claude_md"], "created")
             self.assertEqual(result["readme_md"], "appended")
+            # .mcp.json didn't exist either; should be created.
+            self.assertEqual(result["mcp_json"], "created")
+
+
+# ---------------------------------------------------------------------------
+# .mcp.json upsert (cross-lane integration with compathy-mcp)
+# ---------------------------------------------------------------------------
+
+
+class TestRenderMcpEntry(unittest.TestCase):
+    def test_returns_valid_mcp_server_dict(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            entry = discovery.render_mcp_entry(target)
+            self.assertEqual(entry["command"], "python3")
+            self.assertEqual(entry["transport"], "stdio")
+            self.assertIsInstance(entry["args"], list)
+            self.assertIn("--target", entry["args"])
+            target_idx = entry["args"].index("--target")
+            self.assertEqual(entry["args"][target_idx + 1], str(target.resolve()))
+
+    def test_args_reference_global_install_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            entry = discovery.render_mcp_entry(Path(td))
+            self.assertEqual(entry["args"][0], str(discovery.COMPATHY_QUERY_PATH))
+
+
+class TestUpsertMcpJson(unittest.TestCase):
+    def test_creates_file_when_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            self.assertEqual(discovery.upsert_mcp_json(target), "created")
+            data = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertIn("mcpServers", data)
+            self.assertIn("compathy-wiki", data["mcpServers"])
+            self.assertEqual(
+                data["mcpServers"]["compathy-wiki"]["transport"], "stdio"
+            )
+
+    def test_adds_to_existing_file_without_mcp_servers_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            (target / ".mcp.json").write_text(
+                json.dumps({"someOtherKey": "value"}), encoding="utf-8"
+            )
+            self.assertEqual(discovery.upsert_mcp_json(target), "added")
+            data = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["someOtherKey"], "value")
+            self.assertIn("compathy-wiki", data["mcpServers"])
+
+    def test_preserves_other_servers_when_adding_compathy_wiki(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            existing = {
+                "mcpServers": {
+                    "other-server": {
+                        "command": "node",
+                        "args": ["/x/server.js"],
+                        "transport": "stdio",
+                    }
+                }
+            }
+            (target / ".mcp.json").write_text(json.dumps(existing), encoding="utf-8")
+            self.assertEqual(discovery.upsert_mcp_json(target), "added")
+            data = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                data["mcpServers"]["other-server"],
+                existing["mcpServers"]["other-server"],
+            )
+            self.assertIn("compathy-wiki", data["mcpServers"])
+
+    def test_replaces_prior_compathy_wiki_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            old = {
+                "mcpServers": {
+                    "compathy-wiki": {
+                        "command": "old-command",
+                        "args": ["--target", "/wrong/path"],
+                        "transport": "stdio",
+                    }
+                }
+            }
+            (target / ".mcp.json").write_text(json.dumps(old), encoding="utf-8")
+            self.assertEqual(discovery.upsert_mcp_json(target), "replaced")
+            data = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["mcpServers"]["compathy-wiki"]["command"], "python3")
+
+    def test_skips_malformed_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            malformed = "{not valid json at all"
+            (target / ".mcp.json").write_text(malformed, encoding="utf-8")
+            self.assertEqual(discovery.upsert_mcp_json(target), "skipped-malformed")
+            self.assertEqual(
+                (target / ".mcp.json").read_text(encoding="utf-8"), malformed
+            )
+
+    def test_skips_non_object_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            target = Path(td)
+            (target / ".mcp.json").write_text("[]", encoding="utf-8")
+            self.assertEqual(discovery.upsert_mcp_json(target), "skipped-malformed")
+            self.assertEqual((target / ".mcp.json").read_text(encoding="utf-8"), "[]")
 
 
 if __name__ == "__main__":

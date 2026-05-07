@@ -18,14 +18,24 @@ catches anyway, but defense in depth).
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 CLAUDE_MD = "CLAUDE.md"
 README_MD = "README.md"
+MCP_JSON = ".mcp.json"
 SENTINEL_START = "<!-- compathy:context-section START -->"
 SENTINEL_END = "<!-- compathy:context-section END -->"
+
+# Install path for the MCP server. Matches install.py's TOOL_BASES for the
+# global Claude install. compathy_query.py's module docstring documents the
+# same path.
+COMPATHY_QUERY_PATH = (
+    Path.home() / ".claude" / "skills" / "compathy" / "scripts" / "compathy_query.py"
+)
+COMPATHY_MCP_SERVER_KEY = "compathy-wiki"
 
 # Files we are willing to upsert into. Other extensions (or extensionless
 # binaries) are skipped defensively.
@@ -125,11 +135,80 @@ def upsert_section(target_path: Path, section_body: str) -> str:
     return "appended"
 
 
-def write_discovery_breadcrumbs(target: Path, project_name: str) -> Dict[str, str]:
-    """Write CLAUDE.md and README.md breadcrumb sections at the project root.
+def render_mcp_entry(target: Path) -> Dict[str, Any]:
+    """Return the dict for the 'compathy-wiki' MCP server entry.
 
-    Returns a dict with keys 'claude_md' and 'readme_md' whose values are
-    one of 'created' | 'replaced' | 'appended' | 'skipped'.
+    The ``--target`` arg is substituted with the absolute project path at
+    write time so strict ``.mcp.json`` parsers don't need env var expansion.
+    Stdio transport, no env vars, no auth.
+    """
+    return {
+        "command": "python3",
+        "args": [str(COMPATHY_QUERY_PATH), "--target", str(Path(target).resolve())],
+        "transport": "stdio",
+    }
+
+
+def upsert_mcp_json(target: Path) -> str:
+    """Idempotent inject of the compathy-wiki entry into ``<target>/.mcp.json``.
+
+    Returns one of:
+      * ``'created'`` if no .mcp.json existed before.
+      * ``'added'`` if the file existed but had no compathy-wiki entry.
+      * ``'replaced'`` if the file existed with a prior compathy-wiki entry.
+      * ``'skipped-malformed'`` if the existing .mcp.json couldn't be parsed
+        as JSON, in which case the file is NOT modified (defense in depth).
+
+    Other ``mcpServers`` entries are preserved untouched. The contract: we
+    only mutate ``mcpServers.compathy-wiki``.
+    """
+    target = Path(target)
+    path = target / MCP_JSON
+    entry = render_mcp_entry(target)
+
+    if not path.exists():
+        payload = {"mcpServers": {COMPATHY_MCP_SERVER_KEY: entry}}
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return "created"
+
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(
+            f"[compathy/discovery] warning: malformed or unreadable {path}: {e}; "
+            f"leaving file unchanged.",
+            file=sys.stderr,
+        )
+        return "skipped-malformed"
+
+    if not isinstance(existing, dict):
+        print(
+            f"[compathy/discovery] warning: {path} root is not a JSON object; "
+            f"leaving file unchanged.",
+            file=sys.stderr,
+        )
+        return "skipped-malformed"
+
+    servers = existing.get("mcpServers")
+    had_prior = isinstance(servers, dict) and COMPATHY_MCP_SERVER_KEY in servers
+    if not isinstance(servers, dict):
+        existing["mcpServers"] = {COMPATHY_MCP_SERVER_KEY: entry}
+        status = "added"
+    else:
+        status = "replaced" if had_prior else "added"
+        servers[COMPATHY_MCP_SERVER_KEY] = entry
+
+    path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+    return status
+
+
+def write_discovery_breadcrumbs(target: Path, project_name: str) -> Dict[str, str]:
+    """Write CLAUDE.md, README.md, and .mcp.json breadcrumbs at project root.
+
+    Returns a dict with keys 'claude_md', 'readme_md', and 'mcp_json'. Markdown
+    statuses are 'created' | 'replaced' | 'appended' | 'skipped'. The
+    ``mcp_json`` status is 'created' | 'added' | 'replaced' |
+    'skipped-malformed' | 'error'.
 
     Files with non-markdown suffixes are skipped (defense in depth: both
     files are markdown by convention, but if a user has a binary CLAUDE.md
@@ -137,11 +216,15 @@ def write_discovery_breadcrumbs(target: Path, project_name: str) -> Dict[str, st
     """
     target = Path(target)
     section_body = render_context_section(project_name)
-    result: Dict[str, str] = {"claude_md": "skipped", "readme_md": "skipped"}
+    result: Dict[str, str] = {
+        "claude_md": "skipped",
+        "readme_md": "skipped",
+        "mcp_json": "skipped",
+    }
 
     for key, name in (("claude_md", CLAUDE_MD), ("readme_md", README_MD)):
         path = target / name
-        # Both filenames end in .md — but if the file already exists with a
+        # Both filenames end in .md, but if the file already exists with a
         # weird suffix because someone symlinked it, _markdown_ok returns
         # False and we skip. For the canonical names CLAUDE.md / README.md,
         # this always passes.
@@ -156,6 +239,15 @@ def write_discovery_breadcrumbs(target: Path, project_name: str) -> Dict[str, st
                 file=sys.stderr,
             )
             result[key] = "skipped"
+
+    try:
+        result["mcp_json"] = upsert_mcp_json(target)
+    except OSError as e:
+        print(
+            f"[compathy/discovery] warning: failed to write .mcp.json: {e}",
+            file=sys.stderr,
+        )
+        result["mcp_json"] = "error"
 
     return result
 
