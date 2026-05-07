@@ -127,8 +127,7 @@ class TestGraphifyBridge(unittest.TestCase):
                        side_effect=_subprocess_dispatch(
                            _ls_files_result(55), _graphify_result())):
                 graphify_bridge.run(root)
-
-        self.assertTrue((root / "context" / "raw" / "graphify-report.md").exists())
+            self.assertTrue((root / "context" / "raw" / "graphify-report.md").exists())
 
     def test_file_edges_use_code_relations(self):
         """file_edges should capture calls/imports edges from graph.json."""
@@ -183,7 +182,7 @@ class TestGraphifyBridge(unittest.TestCase):
 
     def test_main_always_returns_zero_no_graphify(self):
         with patch("graphify_bridge.shutil.which", return_value=None):
-            rc = graphify_bridge.main()
+            rc = graphify_bridge.main([])
         self.assertEqual(rc, 0)
 
     def test_main_always_returns_zero_on_timeout(self):
@@ -194,7 +193,7 @@ class TestGraphifyBridge(unittest.TestCase):
 
         with patch("graphify_bridge.shutil.which", return_value="/usr/bin/graphify"), \
              patch("graphify_bridge.subprocess.run", side_effect=_dispatch):
-            rc = graphify_bridge.main()
+            rc = graphify_bridge.main([])
         self.assertEqual(rc, 0)
 
 

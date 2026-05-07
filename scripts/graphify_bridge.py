@@ -70,7 +70,10 @@ def _parse_graph(root: Path) -> dict:
     graph_path = root / "graphify-out" / "graph.json"
     data = json.loads(graph_path.read_text(encoding="utf-8"))
 
-    nodes = {n["id"]: n.get("label", n["id"]) for n in data.get("nodes", [])}
+    raw_nodes = data.get("nodes", [])
+    nodes = {n["id"]: n.get("label", n["id"]) for n in raw_nodes}
+    # source_file lives on nodes, not on links — resolve via target node ID
+    node_files = {n["id"]: n.get("source_file", "") for n in raw_nodes}
     links = data.get("links", data.get("edges", []))
 
     degree: dict[str, int] = defaultdict(int)
@@ -83,11 +86,10 @@ def _parse_graph(root: Path) -> dict:
         degree[tgt_id] += 1
 
         if link.get("relation") in ("calls", "imports"):
-            src_file = link.get("source_file", "")
-            tgt_file = link.get("target_file", link.get("source_file", ""))
+            src_file = link.get("source_file", node_files.get(src_id, ""))
+            tgt_file = node_files.get(tgt_id, "")
             if src_file and tgt_file and src_file != tgt_file:
-                if (root / src_file).exists():
-                    file_edges[src_file].append(tgt_file)
+                file_edges[src_file].append(tgt_file)
 
     god_nodes = [
         nodes[nid]
@@ -136,10 +138,10 @@ def run(target: Path) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", default=".", help="project root (default: cwd)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     root = Path(args.target).resolve()
     print(json.dumps(run(root), indent=2, ensure_ascii=False))
     return 0
