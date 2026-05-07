@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # pylint: disable=wrong-import-position
+import discovery  # noqa: E402
 import persona_integration  # noqa: E402
 from paths import (  # noqa: E402
     INDEX_FILE,
@@ -94,6 +95,51 @@ def create_structure(target: Path, project_name: str = "") -> None:
     )
 
     _maybe_integrate_persona(target, tpl_vars["project_name"])
+    _maybe_write_discovery(target, tpl_vars["project_name"])
+
+
+def _maybe_write_discovery(target: Path, project_name: str) -> None:
+    """Auto-write a "Project context" section into CLAUDE.md and README.md
+    so Claude Code (and other agents) discover the wiki without prompting.
+
+    Wrapped so a discovery failure NEVER aborts the scaffold (consistent
+    with lane-1D's persona-integration posture). Appends a single log.md
+    entry recording what was written, after any persona-integration entry
+    so neither clobbers the other.
+    """
+    try:
+        result = discovery.write_discovery_breadcrumbs(target, project_name)
+    except Exception as e:  # pylint: disable=broad-except
+        # Defense in depth: discovery already swallows OSError, but never
+        # let an unexpected exception abort the scaffold.
+        print(
+            f"[compathy/discovery] warning: discovery breadcrumbs failed: {e}",
+            file=sys.stderr,
+        )
+        return
+
+    _append_discovery_log_entry(wiki_dir(target) / LOG_FILE, result)
+
+
+def _append_discovery_log_entry(log_path: Path, result: dict) -> None:
+    """Append a single discovery line to log.md (no-op if log missing)."""
+    if not log_path.is_file():
+        return
+    parts = []
+    for fname, key in (("CLAUDE.md", "claude_md"), ("README.md", "readme_md")):
+        status = result.get(key, "skipped")
+        if status != "skipped":
+            parts.append(f"{fname} {status}")
+    if not parts:
+        return
+    text = log_path.read_text(encoding="utf-8")
+    if not text.endswith("\n"):
+        text += "\n"
+    today = date.today().isoformat()
+    text += (
+        f"\n## [{today}] discovery | breadcrumbs | {', '.join(parts)}\n"
+    )
+    log_path.write_text(text, encoding="utf-8")
 
 
 def _maybe_integrate_persona(target: Path, project_name: str) -> None:

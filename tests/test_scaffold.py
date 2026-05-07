@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import discovery  # noqa: E402
 import persona_integration  # noqa: E402
 import scaffold  # noqa: E402
 from paths import context_root, raw_dir, schema_path, wiki_dir  # noqa: E402
@@ -226,6 +227,60 @@ class TestPersonaIntegrationInScaffold(unittest.TestCase):
                 )
                 self.assertIn("[[builder]]", index_text)
                 self.assertNotIn("[[style]]", index_text)
+
+
+class TestDiscoveryIntegrationInScaffold(unittest.TestCase):
+    """End-to-end scaffold-with-discovery tests (compathy-discovery)."""
+
+    def test_scaffold_writes_claude_and_readme_breadcrumbs(self):
+        with tempfile.TemporaryDirectory() as td, \
+             tempfile.TemporaryDirectory() as home, \
+             _isolated_home(Path(home)):
+            target = Path(td)
+            scaffold.create_structure(target, project_name="demo")
+
+            claude = target / "CLAUDE.md"
+            readme = target / "README.md"
+            self.assertTrue(claude.is_file())
+            self.assertTrue(readme.is_file())
+
+            for path in (claude, readme):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(discovery.SENTINEL_START, text)
+                self.assertIn(discovery.SENTINEL_END, text)
+                self.assertIn("context/wiki/index.md", text)
+
+            # log.md mentions discovery.
+            log_text = (wiki_dir(target) / "log.md").read_text(encoding="utf-8")
+            self.assertIn("discovery", log_text)
+            self.assertIn("CLAUDE.md", log_text)
+            self.assertIn("README.md", log_text)
+
+    def test_scaffold_idempotent_no_duplicate_sections(self):
+        """Re-running discovery against an existing project must not
+        duplicate the sentinel-fenced section.
+        """
+        with tempfile.TemporaryDirectory() as td, \
+             tempfile.TemporaryDirectory() as home, \
+             _isolated_home(Path(home)):
+            target = Path(td)
+            scaffold.create_structure(target, project_name="demo")
+            first_claude = (target / "CLAUDE.md").read_text(encoding="utf-8")
+            first_readme = (target / "README.md").read_text(encoding="utf-8")
+
+            # Re-run discovery directly (scaffold itself refuses to recreate
+            # context/, but the discovery breadcrumbs are independent).
+            discovery.write_discovery_breadcrumbs(target, "demo")
+            second_claude = (target / "CLAUDE.md").read_text(encoding="utf-8")
+            second_readme = (target / "README.md").read_text(encoding="utf-8")
+
+            self.assertEqual(first_claude, second_claude)
+            self.assertEqual(first_readme, second_readme)
+
+            # Exactly one sentinel pair in each.
+            for text in (second_claude, second_readme):
+                self.assertEqual(text.count(discovery.SENTINEL_START), 1)
+                self.assertEqual(text.count(discovery.SENTINEL_END), 1)
 
 
 if __name__ == "__main__":
