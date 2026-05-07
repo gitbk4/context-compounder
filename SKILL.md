@@ -42,6 +42,22 @@ Output is `INIT` or `RECOMPILE`. Branch accordingly.
 `{skill_dir}` is the directory containing this SKILL.md. You can resolve it
 from the path of this file.
 
+### Phase 0c — Optional graphify augmentation
+
+```bash
+python3 {skill_dir}/scripts/graphify_bridge.py --target .
+```
+
+Capture the JSON output and hold it in memory — you'll reference it in Phase 1f
+and 2b. Never fails: the script always exits 0.
+
+- If `used: true`: tell the user one line, e.g.
+  `graphify: ran on 52 files → graphify-report.md added to raw/`
+  The report is now a raw source and will be compiled like any other.
+- If `used: false`: show the reason as a brief note, e.g.
+  `graphify: skipped — graphify not installed`
+  Continue normally.
+
 ---
 
 ## Phase 1 — INIT Mode (first run)
@@ -108,6 +124,18 @@ Write pages using the `Write` tool. For each source:
    systems (aim for 2-5 in quick, 5-15 in deep).
 
 **Do NOT write patterns pages yet.** Patterns are written LAST (see 1f-bis).
+
+**If the Phase 0c bridge output has `god_nodes`**: write entity pages for those
+symbols first, in the order listed. They are the most structurally connected
+nodes in the codebase and make the strongest entity pages.
+
+**If the bridge output has `communities`**: use each community cluster as a
+candidate concept page grouping. Prefer community boundaries over your own
+grouping intuition when they conflict.
+
+**If the bridge output has `file_edges`**: when writing a page's frontmatter
+`related_paths`, use the edges anchored to that page's source files instead of
+inferring manually.
 
 Every page needs flat-YAML frontmatter (see `context/schema.md`):
 
@@ -257,6 +285,10 @@ For each changed raw source:
 
 Touch 10-15 pages per change is normal. You are doing bookkeeping.
 
+If the Phase 0c bridge output has `file_edges`, use them to verify that each
+updated page's `related_paths` are still current — add any newly relevant paths
+the graph reveals and remove any that no longer appear in the edges.
+
 ### 2b-bis. Refresh patterns (last, as always)
 
 If `patterns/` is empty and the codebase now exists (wasn't true at INIT),
@@ -371,6 +403,7 @@ compathy v<version>
   pages:     <N> (concepts: X, entities: Y, summaries: Z, patterns: P)
   backlinks: <M>
   lint:      <E> errors, <W> warnings
+  graphify:  <"used (N god nodes)" | "skipped — <reason>">
   reflect:   <M> pages refreshed
   next:      run `/compathy` again whenever you add to raw/
 ```
